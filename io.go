@@ -10,18 +10,33 @@ import (
 	"runtime"
 )
 
-// DataDir returns the game's data directory location.
+// DataDir returns the game's data directory location, which holds the
+// save, config, replays and logs. On Windows it is %LOCALAPPDATA%\shamogu.
+// Elsewhere it is the XDG state folder, $XDG_STATE_HOME/shamogu (default
+// ~/.local/state/shamogu), where per-user state such as saves belongs; a
+// folder left in the data folder ($XDG_DATA_HOME/shamogu) by older
+// versions is moved there on first use.
 func DataDir() (string, error) {
-	var xdg string
+	var dataDir string
 	if runtime.GOOS == "windows" {
-		xdg = os.Getenv("LOCALAPPDATA")
+		xdg := os.Getenv("LOCALAPPDATA")
+		if xdg == "" {
+			xdg = filepath.Join(os.Getenv("HOME"), ".local", "share")
+		}
+		dataDir = filepath.Join(xdg, "shamogu")
 	} else {
-		xdg = os.Getenv("XDG_DATA_HOME")
+		dataDir = filepath.Join(xdgDir("XDG_STATE_HOME", ".local", "state"), "shamogu")
+		oldDir := filepath.Join(xdgDir("XDG_DATA_HOME", ".local", "share"), "shamogu")
+		if _, err := os.Stat(dataDir); err != nil {
+			if _, err := os.Stat(oldDir); err == nil {
+				if err := os.MkdirAll(filepath.Dir(dataDir), 0755); err == nil {
+					if err := os.Rename(oldDir, dataDir); err != nil {
+						log.Printf("moving data directory: %v", err)
+					}
+				}
+			}
+		}
 	}
-	if xdg == "" {
-		xdg = filepath.Join(os.Getenv("HOME"), ".local", "share")
-	}
-	dataDir := filepath.Join(xdg, "shamogu")
 	_, err := os.Stat(dataDir)
 	if err != nil {
 		err = os.MkdirAll(dataDir, 0755)
@@ -30,6 +45,15 @@ func DataDir() (string, error) {
 		}
 	}
 	return dataDir, nil
+}
+
+// xdgDir returns the XDG base directory named by env, or its default
+// under the home directory.
+func xdgDir(env string, def ...string) string {
+	if dir := os.Getenv(env); dir != "" {
+		return dir
+	}
+	return filepath.Join(append([]string{os.Getenv("HOME")}, def...)...)
 }
 
 // SaveFile writes save data to the given file.

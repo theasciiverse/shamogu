@@ -15,3 +15,6 @@
 *.test
 shamogu
 rewrite.sh
+
+# Asciiverse scratch
+__pycache__/
